@@ -210,4 +210,29 @@ class ElGamal(
         return r1.x == xr
     }
 
+    /**
+     * Валидность данных подписи относительно кривой
+     */
+    fun isSignDataValid(signature: Pair<BigInteger, BigInteger>): Boolean {
+        val xr = signature.first
+        val s = signature.second
+        if (!(BigInteger.ZERO < xr % curve.r && xr % curve.r < curve.r)) {
+            return false
+        }
+        if (!(BigInteger.ZERO < s && s < curve.r)) {
+            return false
+        }
+        return true
+    }
+
+    /**
+     * Посчитать R1 по открытому ключу и подписи
+     */
+    fun getVerifyR1(e: BigInteger, p: Point, signature: Pair<BigInteger, BigInteger>): Point {
+        val xr = signature.first
+        val s = signature.second
+        return curve.q * ((s * e.modInverse(curve.r)) % curve.r) -
+                p * ((xr * e.modInverse(curve.r)) % curve.r)
+    }
+
 }

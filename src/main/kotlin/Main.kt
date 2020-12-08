@@ -4,6 +4,7 @@ import elgamal.ElGamal
 import elgamal.MessageHelper
 import java.io.File
 import kotlin.Exception
+import kotlin.system.exitProcess
 
 /**
  * Протокол цифровой подписи Эль-Гамаля на основе эллиптических кривых
@@ -56,11 +57,10 @@ fun main() {
         5 -> calcSignR()
         6 -> calcSignS()
         7 -> makeSign()
-        8 -> checkSignature()
-//        8 -> checkSignValid()
-//        9 -> createMessageReceiveHash()
-//        10 -> calcVerifyR1()
-//        11 -> checkSign()
+        8 -> checkSignValid()
+        9 -> createMessageReceiveHash()
+        10 -> calcVerifyR1()
+        11 -> checkSign()
     }
 }
 
@@ -202,7 +202,7 @@ fun calcSignS() {
         null
     }
     while (hash == null) {
-        println("hash == null, hash будет сгенерировано заново")
+        println("hash == null, hash будет сгенерировано заново (calc S)")
         createMessageSendHash()
         hash = try {
             File(HASH_SEND_PATH).readLines().firstOrNull()?.toBigIntegerOrNull()!!
@@ -308,6 +308,136 @@ fun checkSignature() {
     // проверка подписи
     val isValid = elGamal.isValid(message.toByteArray(Charsets.UTF_8), publicKey, signature)
     println("Верна ли подпись: $isValid")
+}
+
+fun checkSignValid() {
+    // чтение кривой
+    var curve = EllipticCurve.fromFile(CURVE_PATH)
+    while (curve == null) {
+        createCurve()
+        curve = EllipticCurve.fromFile(CURVE_PATH)
+    }
+    val elGamal = ElGamal(curve)
+    // чтение подписи
+    var signature = ElGamal.readSignatureFromFile(SIGNATURE_PATH)
+    while (signature == null) {
+        makeSign()
+        signature = ElGamal.readSignatureFromFile(SIGNATURE_PATH)
+    }
+    // проверка корректной подписи в кривой
+    val signDataValid = elGamal.isSignDataValid(signature)
+    File(IS_VALID_SIGN_PATH).writeText(signDataValid.toString())
+    println("Валидность данных подписи относительно кривой записана в файл $IS_VALID_SIGN_PATH")
+}
+
+fun createMessageReceiveHash() {
+    // чтение кривой
+    var curve = EllipticCurve.fromFile(CURVE_PATH)
+    while (curve == null) {
+        createCurve()
+        curve = EllipticCurve.fromFile(CURVE_PATH)
+    }
+    val elGamal = ElGamal(curve)
+    // чтение сообщения
+    var message = MessageHelper.readMessageFromFile(MESSAGE_PATH)
+    while (message == null) {
+        createMessage()
+        message = MessageHelper.readMessageFromFile(MESSAGE_PATH)
+    }
+    val hash = elGamal.getMessageHash(message.toByteArray(Charsets.UTF_8))
+    File(HASH_RECEIVE_PATH).writeText(hash.toString())
+    println("Хеш принятого сообщения добавлен в файл $HASH_RECEIVE_PATH")
+}
+
+fun calcVerifyR1() {
+    // чтение кривой
+    var curve = EllipticCurve.fromFile(CURVE_PATH)
+    while (curve == null) {
+        createCurve()
+        curve = EllipticCurve.fromFile(CURVE_PATH)
+    }
+    val elGamal = ElGamal(curve)
+    // чтение открытого ключа
+    var publicKey = elGamal.readPublicKeyFromFile(PUBLIC_PATH)
+    while (publicKey == null) {
+        createKeys()
+        publicKey = elGamal.readPublicKeyFromFile(PUBLIC_PATH)
+    }
+    // чтение хеша
+    var hash = try {
+        File(HASH_RECEIVE_PATH).readLines().firstOrNull()?.toBigIntegerOrNull()!!
+    } catch (e: Exception) {
+        null
+    }
+    while (hash == null) {
+        println("hash == null, hash будет сгенерировано заново (calc r1)")
+        createMessageReceiveHash()
+        hash = try {
+            File(HASH_RECEIVE_PATH).readLines().firstOrNull()?.toBigIntegerOrNull()!!
+        } catch (e: Exception) {
+            null
+        }
+    }
+    // чтение подписи
+    var signature = ElGamal.readSignatureFromFile(SIGNATURE_PATH)
+    while (signature == null) {
+        makeSign()
+        signature = ElGamal.readSignatureFromFile(SIGNATURE_PATH)
+    }
+    // чтение валидности данных
+    var isSignDataValid = try {
+        File(IS_VALID_SIGN_PATH).readLines().first() == "true"
+    } catch (e: Exception) {
+        null
+    }
+    while (isSignDataValid == null) {
+        println("Проверка корректности неизвестна, будет проверено снова")
+        checkSignValid()
+        isSignDataValid = try {
+            File(IS_VALID_SIGN_PATH).readLines().first() == "true"
+        } catch (e: Exception) {
+            null
+        }
+    }
+    if (isSignDataValid) {
+        val r1 = elGamal.getVerifyR1(hash, publicKey, signature)
+        File(CHECK_R1_PATH).writeText("${r1.x}\n${r1.y}")
+        println("R1 успешно записана в файл $CHECK_R1_PATH")
+    } else {
+        println("Данные подписи не соответствуют кривой")
+        exitProcess(0)
+    }
+}
+
+fun checkSign() {
+    // чтение кривой
+    var curve = EllipticCurve.fromFile(CURVE_PATH)
+    while (curve == null) {
+        createCurve()
+        curve = EllipticCurve.fromFile(CURVE_PATH)
+    }
+    // чтение подписи
+    var signature = ElGamal.readSignatureFromFile(SIGNATURE_PATH)
+    while (signature == null) {
+        makeSign()
+        signature = ElGamal.readSignatureFromFile(SIGNATURE_PATH)
+    }
+    // чтение R1
+    var r1 = try {
+        File(CHECK_R1_PATH).readLines().let { Point(it[0].toBigInteger(), it[1].toBigInteger(), curve.p) }
+    } catch (e: Exception) {
+        null
+    }
+    while (r1 == null) {
+        println("R1 == null, R1 будет посчитано заново")
+        calcVerifyR1()
+        r1 = try {
+            File(CHECK_R1_PATH).readLines().let { Point(it[0].toBigInteger(), it[1].toBigInteger(), curve.p) }
+        } catch (e: Exception) {
+            null
+        }
+    }
+    println("Проверка подписи : ${signature.first == r1.x}")
 }
 
 /**
