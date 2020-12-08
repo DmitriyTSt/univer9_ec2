@@ -62,6 +62,7 @@ class ElGamal(
             }
         }
 
+        /** Чтение сигнатуры из файла */
         fun readSignatureFromFile(path: String): Pair<BigInteger, BigInteger>? {
             try {
                 val lines = File(path).readLines().map { it.toBigInteger() }
@@ -70,6 +71,14 @@ class ElGamal(
                 println("Ошибка чтения сигнатуры из файла, сигнатура будет сгенерирована заново")
                 return null
             }
+        }
+
+        /**
+         * Хеш функция для сообщения
+         */
+        fun hash(x: ByteArray): ByteArray {
+            val md = MessageDigest.getInstance("SHA1")
+            return md.digest(x)
         }
     }
 
@@ -134,6 +143,29 @@ class ElGamal(
     }
 
     /**
+     * Хеш сообщения для подписи
+     */
+    fun getMessageHash(m: ByteArray): BigInteger {
+        var e = hash(m).toBigInteger() % curve.r
+        if (e == BigInteger.ZERO) e = BigInteger.ONE
+        return e
+    }
+
+    /**
+     * Получение точки R для подписи
+     */
+    fun getSignatureR(k: BigInteger): Point {
+        return curve.q * k
+    }
+
+    /**
+     * Получение части подписи s
+     */
+    fun getSignatureS(e: BigInteger, r: Point, l: BigInteger, k: BigInteger): BigInteger {
+        return (l * r.x + k * e) % curve.r
+    }
+
+    /**
      * Подпись сообщения (Протокол 15.6.1 из Ростовцева)
      * @param m
      * с помощью закрытого ключа
@@ -176,15 +208,6 @@ class ElGamal(
         val r1 = curve.q * ((s * e.modInverse(curve.r)) % curve.r) -
                 p * ((xr * e.modInverse(curve.r)) % curve.r)
         return r1.x == xr
-    }
-
-
-    /**
-     * Хеш функция для сообщения
-     */
-    private fun hash(x: ByteArray): ByteArray {
-        val md = MessageDigest.getInstance("SHA1")
-        return md.digest(x)
     }
 
 }
